@@ -1,0 +1,11 @@
+{
+  "name": "bytechat",
+  "private": true,
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "install:all": "npm --prefix api install && npm --prefix web install",
+    "dev:api": "npm --prefix api run dev",
+    "dev:web": "npm --prefix web run dev",
+    "migrate": "npm --prefix api run prisma:migrate"
+  }
+}

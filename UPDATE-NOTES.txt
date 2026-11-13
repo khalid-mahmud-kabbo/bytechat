@@ -1,0 +1,16 @@
+BYTECHAT UPDATE - chats, messages, realtime, media, groups
+
+1) api:
+     cd api
+     npm i multer
+     npm i -D @types/multer
+   add this line to api/.gitignore:   uploads
+   add PUBLIC_URL to api/.env (see .env.example in this update)
+   (NO prisma migration needed - the schema did not change)
+
+2) delete these old web files (replaced by real data):
+     web/lib/mock-data.ts
+
+3) copy the files of this zip over your project (same paths), then:
+     npm run dev:api
+     npm run dev:web
