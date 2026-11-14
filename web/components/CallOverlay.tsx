@@ -6,6 +6,7 @@ import Avatar from './Avatar';
 import { acceptCall, declineCall, hangUp, initCallListeners, toggleCamera, toggleMute } from '@/lib/call-manager';
 import { useAuth } from '@/lib/auth-store';
 import { useCallStore } from '@/lib/call-store';
+import { startRingback, startRingtone, stopRingtone, unlockAudio } from '@/lib/ringtone';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -20,6 +21,28 @@ export default function CallOverlay() {
     if (!token) return;
     return initCallListeners();
   }, [token]);
+
+  // browsers block sound until the first click/key press, so unlock audio once
+  useEffect(() => {
+    const unlock = () => {
+      unlockAudio();
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // ringing -> ringtone, calling -> ringback tone, anything else -> silence
+  useEffect(() => {
+    if (c.phase === 'ringing') startRingtone();
+    else if (c.phase === 'calling') startRingback();
+    return () => stopRingtone();
+  }, [c.phase]);
 
   useEffect(() => {
     if (remoteRef.current) remoteRef.current.srcObject = c.remoteStream;
