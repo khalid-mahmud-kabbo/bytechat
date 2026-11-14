@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [devOtp, setDevOtp] = useState('');
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,8 +22,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       if (step === 'phone') {
-        await api('/auth/request-otp', { method: 'POST', body: JSON.stringify({ phone }) });
-        setStep('code');
+        const r = await api<{ devOtp?: string }>('/auth/request-otp', { method: 'POST', body: JSON.stringify({ phone }) });
+if (r.devOtp) {
+  setDevOtp(r.devOtp);
+  setCode(r.devOtp); // auto-fill
+}
+setStep('code');
       } else {
         const res = await api<{ user: User; isNewUser: boolean; accessToken: string; refreshToken: string }>('/auth/verify-otp', {
           method: 'POST',
@@ -66,6 +71,12 @@ export default function LoginPage() {
             className="h-12 w-full rounded-xl border border-line bg-app px-4 text-center text-xl tracking-[0.4em] outline-none focus:border-brand"
           />
         )}
+
+        {step === 'code' && devOtp && (
+  <p className="rounded-xl bg-amber-100 px-3 py-2 text-center text-sm text-amber-900">
+    Testing mode: no SMS gateway is set up. Your code is <b>{devOtp}</b>
+  </p>
+)}
 
         {error && <p className="text-sm text-red-500">{error}</p>}
 
