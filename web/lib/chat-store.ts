@@ -150,7 +150,7 @@ export const useChatStore = create<ChatState>()((set) => ({
   setPresence: (userId, isOnline, lastSeenAt) =>
     set((s) => ({
       chats: s.chats.map((c) => {
-        const patch = (u: { id: string; isOnline: boolean; lastSeenAt: string | null }) =>
+                const patch = <T extends { id: string; isOnline: boolean; lastSeenAt: string | null }>(u: T): T =>
           u.id === userId ? { ...u, isOnline, lastSeenAt: lastSeenAt ?? u.lastSeenAt } : u;
         return {
           ...c,
