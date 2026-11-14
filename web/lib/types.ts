@@ -66,6 +66,7 @@ export type Chat = {
   members: Member[];
   myRole: 'MEMBER' | 'ADMIN' | 'OWNER';
   pinnedAt: string | null;
+  archivedAt: string | null;
   mutedUntil: string | null;
   unread: number;
   lastMessage: Message | null;

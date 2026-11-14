@@ -2,7 +2,7 @@ import { api } from './api';
 import { useAuth } from './auth-store';
 import { useChatStore } from './chat-store';
 import { getSocket } from './socket';
-import type { MediaInfo, Message } from './types';
+import type { Chat, MediaInfo, Message } from './types';
 
 type SendPayload = {
   chatId: string;
@@ -149,3 +149,16 @@ export function imageSize(file: File): Promise<{ width: number; height: number }
     img.src = url;
   });
 }
+
+export type ChatSettingsPatch = { pinned?: boolean; mutedUntil?: string | null; archived?: boolean };
+
+/** pin / mute / archive, then refresh the main chat list */
+export async function setChatSettings(chatId: string, patch: ChatSettingsPatch) {
+  await api(`/chats/${chatId}/settings`, { method: 'PATCH', body: JSON.stringify(patch) });
+  const { chats } = await api<{ chats: Chat[] }>('/chats');
+  useChatStore.getState().setChats(chats);
+}
+
+export const MUTE_FOREVER = '2100-01-01T00:00:00.000Z';
+export const muteFor = (ms: number) => new Date(Date.now() + ms).toISOString();
+export const isMuted = (c: { mutedUntil: string | null }) => !!c.mutedUntil && new Date(c.mutedUntil) > new Date();

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { AlertCircle, Check, CheckCheck, Clock, FileText, Pause, Pencil, Play, Reply, SmilePlus, Trash2 } from 'lucide-react';
+import { AlertCircle, Check, CheckCheck, Clock, FileText, Forward, Pause, Pencil, Play, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import { formatDuration, formatSize, formatTime } from '@/lib/format';
 import { deleteMessage, reactToMessage, retrySend } from '@/lib/chat-actions';
 import type { Chat, MediaInfo, Message } from '@/lib/types';
@@ -68,9 +68,10 @@ type Props = {
   meId: string;
   onReply: (m: Message) => void;
   onEdit: (m: Message) => void;
+  onForward: (m: Message) => void;
 };
 
-export default function MessageBubble({ m, chat, meId, onReply, onEdit }: Props) {
+export default function MessageBubble({ m, chat, meId, onReply, onEdit, onForward }: Props) {
   const mine = m.senderId === meId;
   const [picker, setPicker] = useState(false);
   const sender = chat.type === 'GROUP' && !mine ? chat.members.find((x) => x.id === m.senderId) : null;
@@ -84,7 +85,7 @@ export default function MessageBubble({ m, chat, meId, onReply, onEdit }: Props)
   );
 
   return (
-    <div className={`group flex ${mine ? 'justify-end' : 'justify-start'}`}>
+    <div id={`msg-${m.id}`} className={`group flex transition-colors ${mine ? 'justify-end' : 'justify-start'}`}>
       <div className={`relative max-w-[78%] ${mine ? 'items-end' : 'items-start'}`}>
         {/* hover toolbar */}
         {canAct && (
@@ -94,6 +95,7 @@ export default function MessageBubble({ m, chat, meId, onReply, onEdit }: Props)
             }`}
           >
             <button title="Reply" onClick={() => onReply(m)} className="rounded-full p-1.5 hover:bg-soft"><Reply size={14} /></button>
+            <button title="Forward" onClick={() => onForward(m)} className="rounded-full p-1.5 hover:bg-soft"><Forward size={14} /></button>
             <button title="React" onClick={() => setPicker((v) => !v)} className="rounded-full p-1.5 hover:bg-soft"><SmilePlus size={14} /></button>
             {mine && m.type === 'TEXT' && (
               <button title="Edit" onClick={() => onEdit(m)} className="rounded-full p-1.5 hover:bg-soft"><Pencil size={14} /></button>

@@ -1,0 +1,8 @@
+BYTECHAT UPDATE 3 - search, pin/mute/archive, forward, contacts, group edit
+
+NO database migration needed.
+
+1) copy the files of this zip over your project (same paths)
+2) server (from the project folder):
+     cd api && pm2 restart bytechat-api
+     cd ../web && npm run build && pm2 restart bytechat-web

@@ -11,11 +11,13 @@ type ChatState = {
   hasMore: Record<string, boolean>;
   activeChatId: string | null;
   typing: Record<string, string[]>; // chatId -> userIds typing right now
+  jump: { chatId: string; messageId: string } | null; // scroll to this message when its chat is open
 
   setChats: (chats: Chat[]) => void;
   upsertChat: (chat: Chat) => void;
   removeChat: (chatId: string) => void;
   setActive: (id: string | null) => void;
+  setJump: (j: { chatId: string; messageId: string } | null) => void;
   setMessages: (chatId: string, msgs: Message[], hasMore: boolean) => void;
   prependMessages: (chatId: string, msgs: Message[], hasMore: boolean) => void;
   addMessage: (m: Message, opts: { incrementUnread: boolean }) => void;
@@ -37,6 +39,7 @@ export const useChatStore = create<ChatState>()((set) => ({
   hasMore: {},
   activeChatId: null,
   typing: {},
+  jump: null,
 
   setChats: (chats) => set({ chats, loaded: true }),
 
@@ -54,6 +57,7 @@ export const useChatStore = create<ChatState>()((set) => ({
     })),
 
   setActive: (id) => set({ activeChatId: id }),
+  setJump: (jump) => set({ jump }),
 
   setMessages: (chatId, msgs, hasMore) =>
     set((s) => {
@@ -146,7 +150,7 @@ export const useChatStore = create<ChatState>()((set) => ({
   setPresence: (userId, isOnline, lastSeenAt) =>
     set((s) => ({
       chats: s.chats.map((c) => {
-                const patch = <T extends { id: string; isOnline: boolean; lastSeenAt: string | null }>(u: T): T =>
+        const patch = (u: { id: string; isOnline: boolean; lastSeenAt: string | null }) =>
           u.id === userId ? { ...u, isOnline, lastSeenAt: lastSeenAt ?? u.lastSeenAt } : u;
         return {
           ...c,
@@ -163,5 +167,5 @@ export const useChatStore = create<ChatState>()((set) => ({
       return { typing: { ...s.typing, [chatId]: next } };
     }),
 
-  reset: () => set({ chats: [], loaded: false, messages: {}, hasMore: {}, activeChatId: null, typing: {} }),
+  reset: () => set({ chats: [], loaded: false, messages: {}, hasMore: {}, activeChatId: null, typing: {}, jump: null }),
 }));

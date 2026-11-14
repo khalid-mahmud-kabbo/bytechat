@@ -4,19 +4,22 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Camera, Info, Mic, MoreVertical, Paperclip, Phone, Search, Send, Smile, Trash2, Video, X } from 'lucide-react';
 import Avatar from './Avatar';
 import EmojiPicker from './EmojiPicker';
+import ForwardModal from './ForwardModal';
 import MessageBubble from './MessageBubble';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { startCall } from '@/lib/call-manager';
 import { editMessage, imageSize, markChatRead, sendMedia, sendText, sendTyping } from '@/lib/chat-actions';
 import { useChatStore } from '@/lib/chat-store';
-import { dayLabel, lastSeenText, messagePreview } from '@/lib/format';
+import { dayLabel, formatListTime, lastSeenText, messagePreview } from '@/lib/format';
 import { useVoiceRecorder } from '@/lib/use-voice-recorder';
 import type { Chat, Message } from '@/lib/types';
 
 const EMPTY: string[] = [];
 const MAX_BYTES = 25 * 1024 * 1024;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+type Hit = { id: string; senderId: string; text: string; createdAt: string };
 type Props = { chat: Chat; onBack: () => void; onToggleInfo: () => void };
 
 export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
@@ -24,12 +27,20 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
   const messages = useChatStore((s) => s.messages[chat.id]);
   const hasMore = useChatStore((s) => !!s.hasMore[chat.id]);
   const typingIds = useChatStore((s) => s.typing[chat.id] ?? EMPTY);
+  const jump = useChatStore((s) => s.jump);
 
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+
+  // search inside this chat
+  const [searching, setSearching] = useState(false);
+  const [sq, setSq] = useState('');
+  const [hits, setHits] = useState<Hit[]>([]);
+  const [searchDone, setSearchDone] = useState(false);
 
   const boxRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -67,13 +78,41 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
 
   useEffect(() => () => stopTyping(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // debounce the in-chat search
+  useEffect(() => {
+    setSearchDone(false);
+    if (sq.trim().length < 2) {
+      setHits([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      api<{ messages: Hit[] }>(`/chats/${chat.id}/search?q=${encodeURIComponent(sq.trim())}`)
+        .then((r) => {
+          setHits(r.messages);
+          setSearchDone(true);
+        })
+        .catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+  }, [sq, chat.id]);
+
+  // a search result in the chat list asked us to scroll to a message
+  useEffect(() => {
+    if (jump && jump.chatId === chat.id) {
+      useChatStore.getState().setJump(null);
+      void jumpTo(jump.messageId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump, chat.id]);
+
   function onScroll() {
     const box = boxRef.current;
     if (box) stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
   }
 
-  async function loadOlder() {
-    const first = messages?.find((m) => !m.pending && !m.failed);
+  async function loadOlder(keepPosition = true) {
+    const list = useChatStore.getState().messages[chat.id];
+    const first = list?.find((m) => !m.pending && !m.failed);
     const box = boxRef.current;
     if (!first || !box) return;
     setLoadingOlder(true);
@@ -84,9 +123,31 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
         `/chats/${chat.id}/messages?limit=40&before=${encodeURIComponent(first.createdAt)}`,
       );
       useChatStore.getState().prependMessages(chat.id, r.messages, r.hasMore);
-      requestAnimationFrame(() => (box.scrollTop = box.scrollHeight - prevHeight)); // keep position
+      if (keepPosition) requestAnimationFrame(() => (box.scrollTop = box.scrollHeight - prevHeight));
     } finally {
       setLoadingOlder(false);
+    }
+  }
+
+  /** Scroll to a message. If it is not loaded yet, load older pages until it shows up. */
+  async function jumpTo(messageId: string) {
+    for (let i = 0; i < 15; i++) {
+      const st = useChatStore.getState();
+      if (!st.messages[chat.id]) {
+        await sleep(150); // chat is still loading
+        continue;
+      }
+      const el = document.getElementById(`msg-${messageId}`);
+      if (el) {
+        stick.current = false;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('bg-soft', 'rounded-xl');
+        setTimeout(() => el.classList.remove('bg-soft', 'rounded-xl'), 1800);
+        return;
+      }
+      if (!st.hasMore[chat.id]) return;
+      await loadOlder(false);
+      await sleep(80);
     }
   }
 
@@ -152,6 +213,12 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
     setText(m.text ?? '');
   }
 
+  function closeSearch() {
+    setSearching(false);
+    setSq('');
+    setHits([]);
+  }
+
   const typingNames = typingIds.map((id) => chat.members.find((m) => m.id === id)?.name ?? 'Someone');
   const subtitle = typingIds.length
     ? chat.type === 'GROUP'
@@ -176,7 +243,7 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
           <div className={`truncate text-xs ${subtitleLive ? 'font-medium text-brand' : 'text-muted'}`}>{subtitle}</div>
         </div>
         <div className="flex items-center gap-1 text-ink/80">
-          <button className="rounded-full p-2.5 hover:bg-soft" title="Search (coming soon)">
+          <button onClick={() => (searching ? closeSearch() : setSearching(true))} className="rounded-full p-2.5 hover:bg-soft" aria-label="Search in chat">
             <Search size={20} />
           </button>
           {chat.peer && (
@@ -198,10 +265,49 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
         </div>
       </header>
 
+      {searching && (
+        <div className="relative border-b border-line bg-panel px-4 py-2">
+          <div className="flex items-center gap-2 rounded-xl bg-app px-3">
+            <Search size={16} className="text-muted" />
+            <input
+              autoFocus
+              value={sq}
+              onChange={(e) => setSq(e.target.value)}
+              placeholder="Search in this chat"
+              className="h-10 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
+            />
+            <button onClick={closeSearch} aria-label="Close search">
+              <X size={16} />
+            </button>
+          </div>
+          {(hits.length > 0 || (searchDone && sq.trim().length >= 2)) && (
+            <div className="absolute left-4 right-4 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-2xl border border-line bg-panel shadow-xl">
+              {hits.length === 0 && <p className="p-4 text-center text-sm text-muted">No messages found</p>}
+              {hits.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={() => {
+                    setHits([]);
+                    void jumpTo(h.id);
+                  }}
+                  className="block w-full px-4 py-2.5 text-left hover:bg-soft"
+                >
+                  <span className="flex items-center justify-between gap-2 text-xs text-muted">
+                    <span>{h.senderId === me.id ? 'You' : (chat.members.find((m) => m.id === h.senderId)?.name ?? 'Member')}</span>
+                    <span>{formatListTime(h.createdAt)}</span>
+                  </span>
+                  <span className="line-clamp-2 text-sm">{h.text}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div ref={boxRef} onScroll={onScroll} className="flex-1 space-y-3 overflow-y-auto p-5">
         {hasMore && (
           <div className="text-center">
-            <button onClick={loadOlder} disabled={loadingOlder} className="rounded-lg bg-panel px-3 py-1 text-xs font-medium text-brand shadow-sm">
+            <button onClick={() => void loadOlder()} disabled={loadingOlder} className="rounded-lg bg-panel px-3 py-1 text-xs font-medium text-brand shadow-sm">
               {loadingOlder ? 'Loading...' : 'Load older messages'}
             </button>
           </div>
@@ -217,7 +323,7 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
                   <span className="rounded-lg bg-panel px-3 py-1 text-xs font-medium text-muted shadow-sm">{dayLabel(m.createdAt)}</span>
                 </div>
               )}
-              <MessageBubble m={m} chat={chat} meId={me.id} onReply={setReplyTo} onEdit={startEdit} />
+              <MessageBubble m={m} chat={chat} meId={me.id} onReply={setReplyTo} onEdit={startEdit} onForward={setForwardMsg} />
             </Fragment>
           );
         })}
@@ -228,7 +334,11 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
       {(replyTo || editing) && (
         <div className="mx-4 flex items-center gap-3 rounded-t-2xl border-l-4 border-brand bg-panel px-4 py-2 text-sm">
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-brand">{editing ? 'Editing message' : `Replying to ${replyTo!.senderId === me.id ? 'yourself' : (chat.members.find((x) => x.id === replyTo!.senderId)?.name ?? 'message')}`}</div>
+            <div className="font-semibold text-brand">
+              {editing
+                ? 'Editing message'
+                : `Replying to ${replyTo!.senderId === me.id ? 'yourself' : (chat.members.find((x) => x.id === replyTo!.senderId)?.name ?? 'message')}`}
+            </div>
             <div className="truncate text-muted">{messagePreview(editing ?? replyTo)}</div>
           </div>
           <button
@@ -295,6 +405,8 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
           </button>
         )}
       </footer>
+
+      {forwardMsg && <ForwardModal message={forwardMsg} onClose={() => setForwardMsg(null)} />}
     </section>
   );
 }

@@ -12,9 +12,12 @@ import {
   getSharedMedia,
   listChats,
   removeMember,
+  searchAllMessages,
+  searchInChat,
   updateGroup,
   updateMySettings,
 } from './chats.service';
+import { forwardMessage } from '../messages/messages.service';
 
 const directSchema = z.object({ userId: z.string().min(1) });
 const groupSchema = z.object({
@@ -29,6 +32,7 @@ const updateGroupSchema = z.object({
 const membersSchema = z.object({ userIds: z.array(z.string().min(1)).min(1).max(100) });
 const settingsSchema = z.object({
   pinned: z.boolean().optional(),
+  archived: z.boolean().optional(),
   mutedUntil: z.coerce.date().nullable().optional(),
 });
 
@@ -36,7 +40,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/', async (req, res) => {
-  res.json({ chats: await listChats(req.userId!) });
+  res.json({ chats: await listChats(req.userId!, undefined, req.query.archived === '1') });
 });
 
 router.post('/direct', validateBody(directSchema), async (req, res) => {
@@ -49,8 +53,23 @@ router.post('/group', validateBody(groupSchema), async (req, res) => {
   res.json({ chat });
 });
 
+// NOTE: fixed paths must be declared before '/:id'
+router.get('/search/messages', async (req, res) => {
+  const q = String(req.query.q ?? '').trim();
+  res.json({ messages: q.length >= 2 ? await searchAllMessages(req.userId!, q) : [] });
+});
+
+router.post('/forward', async (req, res) => {
+  res.json(await forwardMessage(req.userId!, req.body));
+});
+
 router.get('/:id', async (req, res) => {
   res.json({ chat: await getChat(req.params.id, req.userId!) });
+});
+
+router.get('/:id/search', async (req, res) => {
+  const q = String(req.query.q ?? '').trim();
+  res.json({ messages: q.length >= 2 ? await searchInChat(req.params.id, req.userId!, q) : [] });
 });
 
 router.get('/:id/messages', async (req, res) => {

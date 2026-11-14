@@ -18,9 +18,13 @@ async function assertAdmin(chatId: string, userId: string) {
 }
 
 /** Chat list (or one chat) shaped for the UI: title, peer, members, unread, last message. */
-export async function listChats(userId: string, onlyChatId?: string) {
+export async function listChats(userId: string, onlyChatId?: string, archived = false) {
   const memberships = await prisma.chatMember.findMany({
-    where: { userId, leftAt: null, ...(onlyChatId ? { chatId: onlyChatId } : {}) },
+    where: {
+      userId,
+      leftAt: null,
+      ...(onlyChatId ? { chatId: onlyChatId } : { archivedAt: archived ? { not: null } : null }),
+    },
     include: {
       chat: {
         include: {
@@ -60,6 +64,7 @@ export async function listChats(userId: string, onlyChatId?: string) {
       myRole: m.role,
       pinnedAt: m.pinnedAt,
       mutedUntil: m.mutedUntil,
+      archivedAt: m.archivedAt,
       unread: unread[i],
       lastMessage: chat.lastMessage ? serializeMessage(chat.lastMessage) : null,
       lastMessageAt: chat.lastMessageAt ?? chat.createdAt,
@@ -179,7 +184,7 @@ export async function removeMember(actorId: string, chatId: string, targetId: st
 export async function updateMySettings(
   userId: string,
   chatId: string,
-  data: { pinned?: boolean; mutedUntil?: Date | null },
+  data: { pinned?: boolean; mutedUntil?: Date | null; archived?: boolean },
 ) {
   await assertMember(chatId, userId);
   await prisma.chatMember.update({
@@ -187,6 +192,7 @@ export async function updateMySettings(
     data: {
       ...(data.pinned !== undefined ? { pinnedAt: data.pinned ? new Date() : null } : {}),
       ...(data.mutedUntil !== undefined ? { mutedUntil: data.mutedUntil } : {}),
+      ...(data.archived !== undefined ? { archivedAt: data.archived ? new Date() : null } : {}),
     },
   });
   return getChat(chatId, userId);
@@ -222,4 +228,54 @@ export async function getSharedMedia(chatId: string, userId: string, kind: 'medi
     include: messageInclude,
   });
   return rows.map(serializeMessage);
+}
+
+/** Search the text messages of ONE chat I belong to. */
+export async function searchInChat(chatId: string, userId: string, q: string) {
+  await assertMember(chatId, userId);
+  return prisma.message.findMany({
+    where: { chatId, deletedAt: null, type: 'TEXT', text: { contains: q, mode: 'insensitive' } },
+    orderBy: { createdAt: 'desc' },
+    take: 40,
+    select: { id: true, senderId: true, text: true, createdAt: true },
+  });
+}
+
+/** Search the text messages of EVERY chat I belong to. */
+export async function searchAllMessages(userId: string, q: string) {
+  const rows = await prisma.message.findMany({
+    where: {
+      deletedAt: null,
+      type: 'TEXT',
+      text: { contains: q, mode: 'insensitive' },
+      chat: { members: { some: { userId, leftAt: null } } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 30,
+    select: {
+      id: true,
+      chatId: true,
+      senderId: true,
+      text: true,
+      createdAt: true,
+      chat: {
+        select: {
+          type: true,
+          name: true,
+          members: { where: { leftAt: null }, select: { userId: true, user: { select: { name: true, phone: true } } } },
+        },
+      },
+    },
+  });
+  return rows.map((r) => {
+    const peer = r.chat.members.find((m) => m.userId !== userId)?.user;
+    return {
+      id: r.id,
+      chatId: r.chatId,
+      senderId: r.senderId,
+      text: r.text,
+      createdAt: r.createdAt,
+      chatTitle: r.chat.type === 'DIRECT' ? (peer?.name ?? peer?.phone ?? 'Chat') : (r.chat.name ?? 'Group'),
+    };
+  });
 }

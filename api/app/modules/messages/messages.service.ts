@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma';
 import { ApiError } from '../../utils/ApiError';
@@ -93,6 +94,17 @@ export async function sendMessage(userId: string, raw: unknown) {
       data: { deliveredAt: new Date() },
     });
   }
+
+  // an archived chat comes back to the main list when a new message arrives (unless it is muted)
+  await prisma.chatMember.updateMany({
+    where: {
+      chatId: input.chatId,
+      userId: { in: recipients },
+      archivedAt: { not: null },
+      OR: [{ mutedUntil: null }, { mutedUntil: { lt: new Date() } }],
+    },
+    data: { archivedAt: null },
+  });
 
   const full = await prisma.message.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
   const payload = serializeMessage(full);
@@ -204,4 +216,53 @@ export async function reactToMessage(userId: string, raw: unknown) {
   const payload = serializeMessage(updated);
   await emitToChat(m.chatId, 'message:updated', payload);
   return payload;
+}
+
+/** Forward one message to up to 10 chats. Media is copied as a new row that points at the same file. */
+export async function forwardMessage(userId: string, raw: unknown) {
+  const { messageId, chatIds } = z
+    .object({ messageId: z.string(), chatIds: z.array(z.string()).min(1).max(10) })
+    .parse(raw);
+
+  const src = await prisma.message.findUnique({ where: { id: messageId }, include: { media: true } });
+  if (!src || src.deletedAt) throw new ApiError(404, 'Message not found');
+  await assertMember(src.chatId, userId);
+
+  let sent = 0;
+  let failed = 0;
+  for (const chatId of new Set(chatIds)) {
+    let mediaId: string | undefined;
+    try {
+      if (src.media) {
+        const m = await prisma.media.create({
+          data: {
+            uploaderId: userId,
+            key: src.media.key,
+            url: src.media.url,
+            thumbnailUrl: src.media.thumbnailUrl,
+            mimeType: src.media.mimeType,
+            size: src.media.size,
+            fileName: src.media.fileName,
+            width: src.media.width,
+            height: src.media.height,
+            durationMs: src.media.durationMs,
+            waveform: src.media.waveform,
+          },
+        });
+        mediaId = m.id;
+      }
+      await sendMessage(userId, {
+        chatId,
+        clientId: crypto.randomUUID(),
+        type: src.type === 'SYSTEM' ? 'TEXT' : src.type,
+        text: src.text ?? undefined,
+        mediaId,
+      });
+      sent++;
+    } catch {
+      failed++;
+      if (mediaId) await prisma.media.delete({ where: { id: mediaId } }).catch(() => {});
+    }
+  }
+  return { sent, failed };
 }

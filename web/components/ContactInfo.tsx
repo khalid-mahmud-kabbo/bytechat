@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { FileText, LogOut, MoreHorizontal, Phone, Search, UserPlus, Video, X } from 'lucide-react';
 import Avatar from './Avatar';
+import GroupEditModal from './GroupEditModal';
 import NewChatModal from './NewChatModal';
 import { api } from '@/lib/api';
 import { startCall } from '@/lib/call-manager';
@@ -25,6 +26,7 @@ export default function ContactInfo({ chat, onClose }: { chat: Chat; onClose: ()
   const [docs, setDocs] = useState<Message[]>([]);
   const [blocked, setBlocked] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const isGroup = chat.type === 'GROUP';
   const canManage = isGroup && chat.myRole !== 'MEMBER';
 
@@ -73,7 +75,14 @@ export default function ContactInfo({ chat, onClose }: { chat: Chat; onClose: ()
         <Avatar name={chat.title} src={chat.avatarUrl} size={128} group={isGroup && !chat.avatarUrl} />
         <div className="mt-3 text-lg font-bold">{chat.title}</div>
         {isGroup ? (
-          <div className="text-sm text-muted">{chat.members.length} members</div>
+          <>
+            <div className="text-sm text-muted">{chat.members.length} members</div>
+            {canManage && (
+              <button onClick={() => setShowEdit(true)} className="mt-1 text-sm font-medium text-brand">
+                Edit group
+              </button>
+            )}
+          </>
         ) : (
           <>
             <div className="text-sm text-muted">{chat.peer?.phone}</div>
@@ -170,6 +179,7 @@ export default function ContactInfo({ chat, onClose }: { chat: Chat; onClose: ()
         </button>
       )}
 
+      {showEdit && <GroupEditModal chat={chat} onClose={() => setShowEdit(false)} />}
       {showAdd && <NewChatModal mode="add" chatId={chat.id} excludeIds={chat.members.map((m) => m.id)} onClose={() => setShowAdd(false)} />}
     </aside>
   );
