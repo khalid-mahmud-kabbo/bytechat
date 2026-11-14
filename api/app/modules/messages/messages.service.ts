@@ -4,6 +4,7 @@ import { ApiError } from '../../utils/ApiError';
 import { messageInclude, serializeMessage } from '../../lib/serializers';
 import { assertMember } from '../chats/chats.service';
 import { emitStatuses, emitToChat, emitToUsers, getMemberIds, isOnline } from '../../socket/emit';
+import { pushNewMessage } from '../push/push.service';
 
 const sendSchema = z.object({
   chatId: z.string().min(1),
@@ -96,6 +97,12 @@ export async function sendMessage(userId: string, raw: unknown) {
   const full = await prisma.message.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
   const payload = serializeMessage(full);
   emitToUsers(memberIds, 'message:new', payload); // includes the sender's other devices
+
+  // people with no open connection (browser closed) get a push notification
+  void pushNewMessage(
+    { chatId: input.chatId, senderId: userId, type, text: input.text?.trim() || null },
+    recipients.filter((id) => !online.includes(id)),
+  ).catch((e) => console.error('[push]', e));
   return payload;
 }
 

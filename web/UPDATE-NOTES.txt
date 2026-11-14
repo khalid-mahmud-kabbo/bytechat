@@ -1,0 +1,23 @@
+BYTECHAT UPDATE 2 - storage (R2/S3), status, 1-to-1 calls, web push, admin API
+
+THIS UPDATE CHANGES THE DATABASE -> a migration is required.
+
+1) copy the files of this zip over your project (same paths)
+   (api/prisma/schema.prisma is a FULL file. If you edited its generator block before,
+    e.g. importFileExtension = "ts", re-apply that edit.)
+
+2) api:
+     cd api
+     npm i @aws-sdk/client-s3 web-push
+     npm i -D @types/web-push
+     npx prisma generate
+     cd ..
+     npm run migrate          (name it: stories_calls_push)
+
+3) api/.env  -> copy the new variables from api/.env.example
+   - Push:  cd api && npx web-push generate-vapid-keys   -> put both keys in VAPID_*
+   - R2/S3: optional. Leave S3_* empty to keep using ./uploads
+   - TURN:  optional now, needed in production so calls connect on strict networks
+
+4) make yourself admin (log in once first):
+     cd api && npx tsx scripts/make-admin.ts +8801XXXXXXXXX

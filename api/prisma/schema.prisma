@@ -57,6 +57,11 @@ model User {
   chatsCreated  Chat[]           @relation("ChatCreator")
   blocksMade    Block[]          @relation("Blocker")
   blocksGot     Block[]          @relation("Blocked")
+  stories       Story[]
+  storyViews    StoryView[]
+  callsMade     CallLog[]        @relation("Caller")
+  callsGot      CallLog[]        @relation("Callee")
+  pushSubs      PushSubscription[]
 
   @@index([createdAt])
 }
@@ -159,6 +164,7 @@ model Media {
 
   uploader User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
   message  Message?
+  story    Story?
 
   @@index([uploaderId])
 }
@@ -215,4 +221,89 @@ model Reaction {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId])
+}
+
+// ---------------- stories (24h status) ----------------
+enum StoryType {
+  TEXT
+  IMAGE
+  VIDEO
+}
+
+model Story {
+  id        String    @id @default(cuid())
+  userId    String
+  type      StoryType
+  text      String?
+  bgColor   String?
+  mediaId   String?   @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media Media?      @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  views StoryView[]
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+}
+
+model StoryView {
+  storyId  String
+  viewerId String
+  viewedAt DateTime @default(now())
+
+  story  Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  viewer User  @relation(fields: [viewerId], references: [id], onDelete: Cascade)
+
+  @@id([storyId, viewerId])
+  @@index([viewerId])
+}
+
+// ---------------- calls ----------------
+enum CallType {
+  AUDIO
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  ACCEPTED
+  ENDED
+  MISSED
+  DECLINED
+  CANCELED
+}
+
+model CallLog {
+  id          String     @id @default(cuid())
+  callerId    String
+  calleeId    String
+  type        CallType
+  status      CallStatus @default(RINGING)
+  startedAt   DateTime   @default(now())
+  answeredAt  DateTime?
+  endedAt     DateTime?
+  durationSec Int?
+
+  caller User @relation("Caller", fields: [callerId], references: [id], onDelete: Cascade)
+  callee User @relation("Callee", fields: [calleeId], references: [id], onDelete: Cascade)
+
+  @@index([callerId, startedAt(sort: Desc)])
+  @@index([calleeId, startedAt(sort: Desc)])
+}
+
+// ---------------- web push ----------------
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

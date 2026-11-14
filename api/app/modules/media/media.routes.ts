@@ -1,17 +1,14 @@
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import { Router } from 'express';
 import multer from 'multer';
-import { env } from '../../config/env';
 import { prisma } from '../../lib/prisma';
+import { saveFile, storageMode } from '../../lib/storage';
 import { requireAuth } from '../../middleware/auth';
 import { ApiError } from '../../utils/ApiError';
 
-// Local disk storage: fine for development and a single VPS.
-// On Railway/Render the disk is wiped on every deploy -> swap this for Cloudflare R2 / S3 before launch.
-export const UPLOAD_DIR = path.resolve(process.cwd(), 'uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+export { UPLOAD_DIR } from '../../lib/storage';
+
+console.log(`[storage] uploads go to: ${storageMode === 's3' ? 'S3 / R2 bucket' : 'local ./uploads folder'}`);
 
 // The file extension comes from the mime type, never from the user's file name
 // (otherwise "evil.html" with an image mime type would be served as a web page).
@@ -40,11 +37,9 @@ const EXT_BY_MIME: Record<string, string> = {
 
 const baseMime = (mime: string) => mime.split(';')[0].trim().toLowerCase();
 
+// memory storage: the buffer is then written to disk or pushed to the bucket by saveFile()
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOAD_DIR,
-    filename: (_req, file, cb) => cb(null, crypto.randomUUID() + (EXT_BY_MIME[baseMime(file.mimetype)] ?? '.bin')),
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => cb(null, baseMime(file.mimetype) in EXT_BY_MIME),
 });
@@ -56,10 +51,14 @@ const toInt = (v: unknown) => {
 
 const router = Router();
 
-// requireAuth runs BEFORE multer so anonymous requests never write to disk
+// requireAuth runs BEFORE multer so anonymous requests are rejected before reading any upload
 router.post('/', requireAuth, upload.single('file'), async (req, res) => {
   const file = req.file;
   if (!file) throw new ApiError(400, 'No file, or this file type is not supported');
+
+  const mimeType = baseMime(file.mimetype);
+  const key = crypto.randomUUID() + EXT_BY_MIME[mimeType];
+  const url = await saveFile(key, file.buffer, mimeType);
 
   let waveform: number[] = [];
   try {
@@ -74,9 +73,9 @@ router.post('/', requireAuth, upload.single('file'), async (req, res) => {
   const media = await prisma.media.create({
     data: {
       uploaderId: req.userId!,
-      key: file.filename,
-      url: `${env.PUBLIC_URL}/uploads/${file.filename}`,
-      mimeType: baseMime(file.mimetype),
+      key,
+      url,
+      mimeType,
       size: file.size,
       fileName: file.originalname.slice(0, 200),
       width: toInt(req.body.width),

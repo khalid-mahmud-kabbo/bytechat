@@ -5,6 +5,7 @@ import { clientOrigins } from '../config/env';
 import { verifyAccessToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
+import { acceptCall, endCall, endCallsForUser, relaySignal, startCall } from '../modules/calls/calls.service';
 import {
   deleteMessage,
   editMessage,
@@ -41,9 +42,12 @@ export function initSocket(server: HttpServer) {
   const io = new Server(server, { cors: { origin: clientOrigins, credentials: true } });
   setIo(io);
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
-      socket.data.userId = verifyAccessToken(String(socket.handshake.auth?.token ?? ''));
+      const id = verifyAccessToken(String(socket.handshake.auth?.token ?? ''));
+      const user = await prisma.user.findUnique({ where: { id }, select: { isBanned: true } });
+      if (!user || user.isBanned) return next(new Error('unauthorized'));
+      socket.data.userId = id;
       next();
     } catch {
       next(new Error('unauthorized'));
@@ -63,6 +67,7 @@ export function initSocket(server: HttpServer) {
     // everything sent while this user was offline is now "delivered"
     markDeliveredForUser(userId).catch((e) => console.error('[deliver]', e));
 
+    // ---- chat ----
     handle(socket, 'message:send', (d) => sendMessage(userId, d));
     handle(socket, 'chat:read', async (d) => {
       const { chatId } = z.object({ chatId: z.string() }).parse(d);
@@ -82,6 +87,12 @@ export function initSocket(server: HttpServer) {
       );
     });
 
+    // ---- calls (1-to-1 WebRTC signalling) ----
+    handle(socket, 'call:start', (d) => startCall(userId, d));
+    handle(socket, 'call:accept', (d) => acceptCall(userId, d));
+    handle(socket, 'call:end', (d) => endCall(userId, d));
+    handle(socket, 'call:signal', (d) => relaySignal(userId, d));
+
     socket.on('disconnect', async () => {
       const left = (connections.get(userId) ?? 1) - 1;
       if (left > 0) {
@@ -89,6 +100,7 @@ export function initSocket(server: HttpServer) {
         return;
       }
       connections.delete(userId);
+      endCallsForUser(userId).catch(() => {});
       const lastSeenAt = new Date();
       await prisma.user.update({ where: { id: userId }, data: { isOnline: false, lastSeenAt } }).catch(() => {});
       broadcastPresence(userId, false, lastSeenAt).catch(() => {});

@@ -7,6 +7,7 @@ import EmojiPicker from './EmojiPicker';
 import MessageBubble from './MessageBubble';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
+import { startCall } from '@/lib/call-manager';
 import { editMessage, imageSize, markChatRead, sendMedia, sendText, sendTyping } from '@/lib/chat-actions';
 import { useChatStore } from '@/lib/chat-store';
 import { dayLabel, lastSeenText, messagePreview } from '@/lib/format';
@@ -175,11 +176,19 @@ export default function ChatWindow({ chat, onBack, onToggleInfo }: Props) {
           <div className={`truncate text-xs ${subtitleLive ? 'font-medium text-brand' : 'text-muted'}`}>{subtitle}</div>
         </div>
         <div className="flex items-center gap-1 text-ink/80">
-          {[Search, Video, Phone].map((Icon, i) => (
-            <button key={i} className="rounded-full p-2.5 hover:bg-soft" title="Coming soon">
-              <Icon size={20} />
-            </button>
-          ))}
+          <button className="rounded-full p-2.5 hover:bg-soft" title="Search (coming soon)">
+            <Search size={20} />
+          </button>
+          {chat.peer && (
+            <>
+              <button onClick={() => void startCall(chat.peer!, 'VIDEO')} className="rounded-full p-2.5 hover:bg-soft" aria-label="Video call">
+                <Video size={20} />
+              </button>
+              <button onClick={() => void startCall(chat.peer!, 'AUDIO')} className="rounded-full p-2.5 hover:bg-soft" aria-label="Voice call">
+                <Phone size={20} />
+              </button>
+            </>
+          )}
           <button onClick={onToggleInfo} className="hidden rounded-full p-2.5 hover:bg-soft xl:block" aria-label="Chat info">
             <Info size={20} />
           </button>

@@ -72,3 +72,34 @@ export type Chat = {
   lastMessageAt: string;
   createdAt: string;
 };
+
+export type StoryItem = {
+  id: string;
+  type: 'TEXT' | 'IMAGE' | 'VIDEO';
+  text: string | null;
+  bgColor: string | null;
+  media: { id: string; url: string; mimeType: string; width: number | null; height: number | null; durationMs: number | null } | null;
+  createdAt: string;
+  expiresAt: string;
+  viewed: boolean;
+  viewCount: number | null;
+};
+
+export type StoryGroup = {
+  user: LiteUser;
+  isMine: boolean;
+  stories: StoryItem[];
+  hasUnviewed: boolean;
+  latestAt: string;
+};
+
+export type CallLogItem = {
+  id: string;
+  type: 'AUDIO' | 'VIDEO';
+  status: 'RINGING' | 'ACCEPTED' | 'ENDED' | 'MISSED' | 'DECLINED' | 'CANCELED';
+  direction: 'incoming' | 'outgoing';
+  peer: LiteUser;
+  startedAt: string;
+  durationSec: number | null;
+  missed: boolean;
+};

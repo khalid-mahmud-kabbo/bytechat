@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MessageSquare } from 'lucide-react';
 import ChatList from '@/components/ChatList';
 import ChatWindow from '@/components/ChatWindow';
@@ -11,6 +11,12 @@ export default function ChatsPage() {
   const active = useChatStore((s) => s.chats.find((c) => c.id === s.activeChatId) ?? null);
   const setActive = useChatStore((s) => s.setActive);
   const [showInfo, setShowInfo] = useState(true);
+
+  // opened from a push notification: /chats?c=<chatId>
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('c');
+    if (id) setActive(id);
+  }, [setActive]);
 
   return (
     <div className="flex h-full">

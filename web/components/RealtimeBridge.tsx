@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-store';
 import { markChatRead } from '@/lib/chat-actions';
+import { messagePreview } from '@/lib/format';
 import { useChatStore } from '@/lib/chat-store';
 import { getSocket } from '@/lib/socket';
 import type { Chat, Message, User } from '@/lib/types';
@@ -80,6 +81,13 @@ export default function RealtimeBridge() {
       const isViewing = viewing(msg.chatId);
       store.getState().addMessage(msg, { incrementUnread: !mine && !isViewing });
       if (!mine && isViewing) socket.emit('chat:read', { chatId: msg.chatId });
+
+      // tab open but hidden -> the server sees us as online and sends no push, so notify here
+      if (!mine && document.visibilityState === 'hidden' && 'Notification' in window && Notification.permission === 'granted') {
+        const chat = store.getState().chats.find((c) => c.id === msg.chatId);
+        const muted = chat?.mutedUntil && new Date(chat.mutedUntil) > new Date();
+        if (!muted) new Notification(chat?.title ?? 'New message', { body: messagePreview(msg), tag: `chat:${msg.chatId}` });
+      }
     };
 
     const onUpdated = (msg: Message) => store.getState().updateMessage(msg);

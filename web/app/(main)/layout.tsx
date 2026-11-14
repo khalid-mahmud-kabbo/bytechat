@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import CallOverlay from '@/components/CallOverlay';
 import RealtimeBridge from '@/components/RealtimeBridge';
 import Sidebar from '@/components/Sidebar';
 import { useAuth } from '@/lib/auth-store';
@@ -25,6 +26,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex h-dvh overflow-hidden">
       <RealtimeBridge />
+      <CallOverlay />
       <Sidebar />
       <main className="min-w-0 flex-1">{children}</main>
     </div>

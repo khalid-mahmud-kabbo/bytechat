@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import NotificationToggle from '@/components/NotificationToggle';
 import ProfileForm from '@/components/ProfileForm';
 
 export default function SettingsPage() {
@@ -18,6 +19,7 @@ export default function SettingsPage() {
           }}
         />
         {saved && <p className="mt-3 text-center text-sm font-medium text-brand">Saved ✓</p>}
+        <NotificationToggle />
       </div>
     </div>
   );

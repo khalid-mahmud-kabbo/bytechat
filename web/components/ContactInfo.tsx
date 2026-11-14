@@ -5,6 +5,7 @@ import { FileText, LogOut, MoreHorizontal, Phone, Search, UserPlus, Video, X } f
 import Avatar from './Avatar';
 import NewChatModal from './NewChatModal';
 import { api } from '@/lib/api';
+import { startCall } from '@/lib/call-manager';
 import { useAuth } from '@/lib/auth-store';
 import { useChatStore } from '@/lib/chat-store';
 import { formatSize, lastSeenText } from '@/lib/format';
@@ -85,7 +86,15 @@ export default function ContactInfo({ chat, onClose }: { chat: Chat; onClose: ()
 
       <div className="mt-5 flex justify-between">
         {actions.map(({ label, icon: Icon }) => (
-          <button key={label} className="flex flex-col items-center gap-1.5 text-xs" title="Coming soon">
+          <button
+            key={label}
+            disabled={(label === 'Audio' || label === 'Video') && !chat.peer}
+            onClick={() => {
+              if (chat.peer && label === 'Audio') void startCall(chat.peer, 'AUDIO');
+              if (chat.peer && label === 'Video') void startCall(chat.peer, 'VIDEO');
+            }}
+            className="flex flex-col items-center gap-1.5 text-xs disabled:opacity-40"
+          >
             <span className="grid h-12 w-12 place-items-center rounded-full bg-soft text-brand-dark dark:text-brand">
               <Icon size={20} />
             </span>
